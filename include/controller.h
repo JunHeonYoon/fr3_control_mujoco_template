@@ -94,7 +94,12 @@ class cRoboticsController
         void torqueCtrlDynamic();
         // ----------------------------------------------
 
-        // ===================================================================
+        // ============================================================================
+        // Utils functions
+        Matrix4d getEEPose(const VectorXd& q);
+        MatrixXd getEEJac(const VectorXd& q);
+        MatrixXd getMassMatrix(const VectorXd& q);
+        VectorXd getGravityVector(const VectorXd& q);
 
         // Core functions
         void keyMapping(const int &key);
@@ -105,6 +110,7 @@ class cRoboticsController
         bool updateKinematics(const VectorXd& q, const VectorXd& qdot);
         bool updateDynamics(const VectorXd& q, const VectorXd& qdot);
         VectorXd getCtrlInput();
+
 };
 
 #endif // CROBOTICS_CONTROLLER_H

@@ -207,6 +207,74 @@ void cRoboticsController::printState()
     std::cout << std::fixed << std::setprecision(3) << J_ << std::endl;
 }
 
+Matrix4d cRoboticsController::getEEPose(const VectorXd& q)
+{
+    if(q.size() != model_.nq)
+    {
+        std::cerr << "getEEPose Error: size of q " << q.size() << " is not equal to model.nq size: " << model_.nq << std::endl;
+        return Matrix4d::Identity();
+    }
+    pinocchio::FrameIndex ee_index = model_.getFrameId(ee_name_);
+    if (ee_index == static_cast<pinocchio::FrameIndex>(-1))  
+    {
+        std::cerr << "Error: Link name " << ee_name_ << " not found in URDF." << std::endl;
+        return Matrix4d::Identity();
+    }
+
+    pinocchio::Data data_tmp(model_);
+    pinocchio::framesForwardKinematics(model_, data_tmp, q);
+    return data_tmp.oMf[ee_index].toHomogeneousMatrix();
+}
+
+MatrixXd cRoboticsController::getEEJac(const VectorXd& q)
+{
+    if(q.size() != model_.nq)
+    {
+        std::cerr << "getEEJac Error: size of q " << q.size() << " is not equal to model.nq size: " << model_.nq << std::endl;
+        return MatrixXd::Zero(6, model_.nv);
+    }
+    pinocchio::FrameIndex ee_index = model_.getFrameId(ee_name_);
+    if (ee_index == static_cast<pinocchio::FrameIndex>(-1))  
+    {
+        std::cerr << "Error: Link name " << ee_name_ << " not found in URDF." << std::endl;
+        return MatrixXd::Zero(6, model_.nv);
+    }
+
+    MatrixXd J;
+    J.setZero(6, model_.nv);
+    pinocchio::Data data_tmp(model_);
+    pinocchio::computeJointJacobians(model_, data_tmp, q);
+    pinocchio::getFrameJacobian(model_, data_tmp, ee_index, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J);
+
+    return J;
+}
+
+MatrixXd cRoboticsController::getMassMatrix(const VectorXd& q)
+{
+    if(q.size() != model_.nq)
+    {
+        std::cerr << "getMassMatrix Error: size of q " << q.size() << " is not equal to model.nq size: " << model_.nq << std::endl;
+        return MatrixXd::Zero(model_.nq, model_.nq);
+    }
+    pinocchio::Data data_tmp(model_);
+    pinocchio::crba(model_, data_tmp, q);
+
+    return data_tmp.M.selfadjointView<Upper>();  // Only upper triangular part of M_ is computed by pinocchio::crba
+}
+
+VectorXd cRoboticsController::getGravityVector(const VectorXd& q)
+{
+    if(q.size() != model_.nq)
+    {
+        std::cerr << "getGravityVector Error: size of q " << q.size() << " is not equal to model.nq size: " << model_.nq << std::endl;
+        return VectorXd::Zero(model_.nq);
+    }
+    pinocchio::Data data_tmp(model_);
+    pinocchio::computeGeneralizedGravity(model_, data_tmp, q);
+
+    return data_tmp.g;
+}
+
 bool cRoboticsController::updateModel(const VectorXd& q, const VectorXd& qdot, const VectorXd& tau)
 {
     q_ = q;
@@ -222,12 +290,12 @@ bool cRoboticsController::updateKinematics(const VectorXd& q, const VectorXd& qd
 {
     if(q.size() != model_.nq)
     {
-        std::cerr << "updateDynamics Error: size of q " << q.size() << " is not equal to model.nq size: " << model_.nq << std::endl;
+        std::cerr << "updateKinematics Error: size of q " << q.size() << " is not equal to model.nq size: " << model_.nq << std::endl;
         return false;
     }
     if(qdot.size() != model_.nv)
     {
-        std::cerr << "updateDynamics Error: size of qdot " << qdot.size() << " is not equal to model.nv size: " << model_.nv << std::endl;
+        std::cerr << "updateKinematics Error: size of qdot " << qdot.size() << " is not equal to model.nv size: " << model_.nv << std::endl;
         return false;
     }
     pinocchio::FrameIndex ee_index = model_.getFrameId(ee_name_);
