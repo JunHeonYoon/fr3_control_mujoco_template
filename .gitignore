@@ -1,2 +1,4 @@
 .vscode
 build
+logging.txt
+*.pyc
