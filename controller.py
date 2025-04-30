@@ -5,14 +5,15 @@ import numpy as np
 import os
 import sys
 import os
-import select
-import termios
-import tty
 import threading
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if os.name == 'nt':
+    import msvcrt
     target_path = os.path.join(current_dir, "build", "Release")
 else:
+    import select
+    import termios
+    import tty
     target_path = os.path.join(current_dir, "build")
 sys.path.append(target_path)
 from cRoboticsController_wrapper_cpp import cRoboticsController as cRoboticsControllerCPP
@@ -56,8 +57,9 @@ class RobotController():
         self.paused = False
         self.quit = False
         
-        old_settings = termios.tcgetattr(sys.stdin)
-        tty.setcbreak(sys.stdin.fileno())
+        if os.name != 'nt':
+            self.old_settings = termios.tcgetattr(sys.stdin)
+            tty.setcbreak(sys.stdin.fileno())
         keyThread = threading.Thread(target=self.keyCallback)
         keyThread.daemon = True 
         keyThread.start()
@@ -84,14 +86,22 @@ class RobotController():
     
     def keyCallback(self):
         while True:
-            if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
-                keycode = sys.stdin.read(1)
-                if keycode == ' ':
-                    self.paused = not self.paused
-                elif keycode == 'q':
-                    self.quit = True
-                else:
-                    self.controller.keyMapping(ord(keycode))
+            if os.name == 'nt':
+                if msvcrt.kbhit():
+                    keycode = msvcrt.getch().decode('utf-8')
+                    self.handle_key_input(keycode)
+            else:
+                if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
+                    keycode = sys.stdin.read(1)
+                    self.handle_key_input(keycode)
+
+    def handle_key_input(self, keycode):
+        if keycode == ' ':
+            self.paused = not self.paused
+        elif keycode == 'q':
+            self.quit = True
+        else:
+            self.controller.keyMapping(ord(keycode))
             
     def run(self):
         with mujoco.viewer.launch_passive(self.mujoco_model, self.mujoco_data, show_left_ui=False, show_right_ui=False) as viewer:
