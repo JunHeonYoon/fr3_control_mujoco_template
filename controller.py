@@ -6,14 +6,18 @@ import os
 import sys
 import os
 import threading
-current_dir = os.path.dirname(os.path.abspath(__file__))
+
 if os.name == 'nt':
     import msvcrt
+else:
+    import select, termios, tty
+
+
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if os.name == 'nt':
     target_path = os.path.join(current_dir, "build", "Release")
 else:
-    import select
-    import termios
-    import tty
     target_path = os.path.join(current_dir, "build")
 sys.path.append(target_path)
 from cRoboticsController_wrapper_cpp import cRoboticsController as cRoboticsControllerCPP
@@ -58,8 +62,10 @@ class RobotController():
         self.quit = False
         
         if os.name != 'nt':
-            self.old_settings = termios.tcgetattr(sys.stdin)
+            self._old_term = termios.tcgetattr(sys.stdin)
             tty.setcbreak(sys.stdin.fileno())
+
+        
         keyThread = threading.Thread(target=self.keyCallback)
         keyThread.daemon = True 
         keyThread.start()
@@ -85,23 +91,27 @@ class RobotController():
         self.controller.updateModel(q, qdot, tau)
     
     def keyCallback(self):
+        poll_interval = 0.01
         while True:
             if os.name == 'nt':
                 if msvcrt.kbhit():
-                    keycode = msvcrt.getch().decode('utf-8')
-                    self.handle_key_input(keycode)
+                    keycode = msvcrt.getwch()
+                else:
+                    time.sleep(poll_interval)
+                    continue
             else:
-                if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
+                if select.select([sys.stdin], [], [], 0)[0]:
                     keycode = sys.stdin.read(1)
-                    self.handle_key_input(keycode)
+                else:
+                    time.sleep(poll_interval)
+                    continue
 
-    def handle_key_input(self, keycode):
-        if keycode == ' ':
-            self.paused = not self.paused
-        elif keycode == 'q':
-            self.quit = True
-        else:
-            self.controller.keyMapping(ord(keycode))
+            if keycode == ' ':
+                self.paused = not self.paused
+            elif keycode in ('q', 'Q'):
+                self.quit = True
+            else:
+                self.controller.keyMapping(ord(keycode))
             
     def run(self):
         with mujoco.viewer.launch_passive(self.mujoco_model, self.mujoco_data, show_left_ui=False, show_right_ui=False) as viewer:
